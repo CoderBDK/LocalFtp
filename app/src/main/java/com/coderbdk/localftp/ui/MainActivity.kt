@@ -1,7 +1,9 @@
-package com.coderbdk.localftp
+package com.coderbdk.localftp.ui
 
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
@@ -9,6 +11,7 @@ import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -19,12 +22,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
@@ -33,7 +36,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
@@ -43,7 +45,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -57,14 +58,19 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.core.content.ContextCompat
+import com.coderbdk.localftp.R
 import com.coderbdk.localftp.di.ftp.LocalFtpServer
-import com.coderbdk.localftp.ui.theme.LocalFtpService
 import com.coderbdk.localftp.ui.theme.LocalFtpTheme
 import kotlinx.coroutines.launch
 import java.io.File
@@ -84,6 +90,8 @@ class MainActivity : ComponentActivity() {
 
         // val localFtpServer = LocalFtpService.getServer()
 
+        needPermission()
+
         setContent {
             LocalFtpTheme {
                 // A surface container using the 'background' color from the theme
@@ -96,6 +104,38 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    private fun needPermission() {
+        if (
+            ContextCompat.checkSelfPermission(
+                this,
+                "android.permission.READ_EXTERNAL_STORAGE"
+            ) != PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(
+                this,
+                "android.permission.WRITE_EXTERNAL_STORAGE"
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+
+            Utils().takePermission(this)
+
+            registerForActivityResult(
+                ActivityResultContracts.RequestPermission()
+            ) { isGranted: Boolean ->
+                if (isGranted) {
+                    // Permission is granted. Continue the action or workflow in your
+                    // app.
+                    startActivity(Intent(applicationContext, MainActivity::class.java))
+                    finish()
+                } else {
+                    Utils().alertPermission(this)
+                }
+            }
+
+        }
+
+    }
+
 
     private fun onInitServerListener(localFtpServer: LocalFtpServer, onError: () -> Unit) {
         localFtpServer.setServerListener(
@@ -127,7 +167,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     fun TopMenuBar(value: String, onValueChange: (String) -> Unit) {
         val isOldServerRunning = prefs.getBoolean("is_running", false)
-        if(isOldServerRunning) {
+        if (isOldServerRunning) {
             localFtpServer = LocalFtpService.getServer()
         }
         var isServerRunning by remember {
@@ -167,10 +207,12 @@ class MainActivity : ComponentActivity() {
                             Handler(Looper.getMainLooper()).postDelayed(
                                 {
                                     localFtpServer = LocalFtpService.getServer()!!
-                                    onInitServerListener(localFtpServer!!,
+                                    onInitServerListener(
+                                        localFtpServer!!,
                                         onError = {
-                                        isServerRunning = false
-                                    },)
+                                            isServerRunning = false
+                                        },
+                                    )
                                 }, 1000
                             )
 
@@ -264,17 +306,20 @@ class MainActivity : ComponentActivity() {
     @SuppressLint("CommitPrefEdits")
     @Composable
     fun SettingsContent() {
-
-        var link = "Not available"
-        if(localFtpServer !=null) {
-            link = "http://${localFtpServer!!.getLocalFtpAddress()}/"
-        }
         val oldPortValue = prefs.getInt("port", 8088)
         var portValue by remember {
             mutableStateOf(
-               "$oldPortValue"
+                "$oldPortValue"
             )
         }
+        var link = "Not available"
+        var uploadUrl = "Not available"
+        if (localFtpServer != null) {
+            link = "http:/${localFtpServer!!.getLocalFtpAddress()}/"
+            uploadUrl = "http:/${localFtpServer!!.getLocalFtpAddress()}/upload/"
+        }
+
+
 
         Column(
             Modifier
@@ -282,8 +327,29 @@ class MainActivity : ComponentActivity() {
                 .fillMaxWidth()
         ) {
 
-            Text(text = "Link:${link}")
-            Text(text = if(localFtpServer == null) "Server: Not started" else "Server: Running")
+            localFtpServer?.apply {
+
+                Text(
+                    modifier = Modifier.clickable {
+                        val myIntent = Intent(Intent.ACTION_VIEW, Uri.parse(link))
+                        startActivity(myIntent)
+                    },
+                    text = "Local Ftp:\n $link",
+                    color = Color.Blue,
+                    textDecoration = TextDecoration.Underline
+                )
+                Text(
+                    modifier = Modifier.clickable {
+                        val myIntent = Intent(Intent.ACTION_VIEW, Uri.parse(uploadUrl))
+                        startActivity(myIntent)
+                    },
+                    text = "Upload file :\n $uploadUrl",
+                    color = Color.Blue,
+                    textDecoration = TextDecoration.Underline
+                )
+            }
+
+            Text(text = if (localFtpServer == null) "Server: Not started" else "Server: Running")
             OutlinedTextField(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -294,8 +360,8 @@ class MainActivity : ComponentActivity() {
                 },
                 onValueChange = {
                     portValue = it
-                    if(it.isNotEmpty()) {
-                        if(it.length > 3) {
+                    if (it.isNotEmpty()) {
+                        if (it.length > 3) {
                             prefs.edit().putInt("port", it.toInt()).apply()
                         }
                     }
@@ -310,6 +376,7 @@ class MainActivity : ComponentActivity() {
         }
 
     }
+
     @SuppressLint("CommitPrefEdits")
     private fun startServer() {
         prefs.edit().putBoolean("is_running", true).apply()
@@ -332,8 +399,13 @@ class MainActivity : ComponentActivity() {
         val baseFile =
             File(Environment.getExternalStorageDirectory().absolutePath + "/LocalFtpServer/")
         if (!baseFile.isDirectory) {
-            Text(text = "Dir not found")
-            Text(text = "Dir created:${baseFile.mkdir()}")
+            Column(
+                Modifier.padding(8.dp)
+            ) {
+                Text(text = "Dir not found")
+                Text(text = "Dir created:${baseFile.mkdir()}")
+            }
+
         }
         var currentDirPath by remember {
             mutableStateOf(
@@ -512,4 +584,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+
 }
+

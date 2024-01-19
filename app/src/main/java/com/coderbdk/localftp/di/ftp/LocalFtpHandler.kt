@@ -10,6 +10,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.io.PrintStream
+import java.util.Date
 
 
 /**
@@ -42,20 +43,38 @@ class LocalFtpHandler {
 
     fun sendHTMLResponse(out: OutputStream?, responseCode: Int, messageHtmlCode: String?) {
         val ps = PrintStream(out)
-        ps.println("HTTP/1.1 200 OK")
-        ps.println("Content-Type: text/html")
-        ps.println("\r\n")
+        printHeader(ps, "HTTP/1.1 $responseCode OK")
+        printHeader(ps,"Content-Type: text/html; charset=utf-8")
+        printHeader(ps,"Content-Length: ${messageHtmlCode?.length}")
+        printHeader(ps,"Server: LocalFtp")
+        printHeader(ps,"Connection: close")
+        printHeader(ps,"Date: ${Date(System.currentTimeMillis())}")
+        closeHeader(ps)
         ps.println(messageHtmlCode)
         ps.flush()
         ps.close()
     }
-    fun sendHTMLKeepResponse(out: OutputStream?, responseCode: Int, messageHtmlCode: String?) {
+    fun sendHTMLResponseKeepAlive(out: OutputStream?, responseCode: Int, messageHtmlCode: String?) {
         val ps = PrintStream(out)
-        ps.println("HTTP/1.1 200 OK")
-        ps.println("Content-Type: text/html")
-        ps.println("\r\n")
+        printHeader(ps, "HTTP/1.1 $responseCode OK")
+        printHeader(ps,"Content-Type: text/html; charset=utf-8")
+        printHeader(ps,"Content-Length: ${messageHtmlCode?.length}")
+        printHeader(ps,"Server: LocalFtp")
+        printHeader(ps,"Connection: keep-alive")
+        printHeader(ps, "Keep-Alive: timeout=5, max=1000")
+        printHeader(ps,"Date: ${Date(System.currentTimeMillis())}")
+        closeHeader(ps)
         ps.println(messageHtmlCode)
     }
+
+    private fun printHeader(ps: PrintStream,content: String){
+        ps.print(content)
+        ps.print("\r\n")
+    }
+    private fun closeHeader(ps: PrintStream) {
+        ps.print("\r\n")
+    }
+
     @Throws(IOException::class)
     fun readFile(path: String?): String {
         val input = FileInputStream(path)
@@ -73,10 +92,10 @@ class LocalFtpHandler {
     fun sendHTMLFile(out: OutputStream?, responseCode: Int, path: String?) {
         val data = readFile(path)
         val ps = PrintStream(out)
-        ps.println("HTTP/1.1 200 OK")
-        ps.println("Content-Type: text/html")
-        ps.println("\r\n")
-        ps.println(java.lang.String(data) as String)
+        printHeader(ps,"HTTP/1.1 200 OK")
+        printHeader(ps,"Content-Type: text/html")
+        printHeader(ps,"\r\n")
+        printHeader(ps,java.lang.String(data) as String)
         ps.flush()
         ps.close()
     }
@@ -85,9 +104,9 @@ class LocalFtpHandler {
     fun sendFile(out: OutputStream, mimeType: String, responseCode: Int, path: String?) {
         val input = FileInputStream(path)
         val ps = PrintStream(out)
-        ps.println("HTTP/1.1 200 OK")
-        ps.println("Content-Type: $mimeType")
-        ps.println("\r\n")
+        printHeader(ps,"HTTP/1.1 200 OK")
+        printHeader(ps,"Content-Type: $mimeType")
+        printHeader(ps,"\r\n")
         readSendFile(input, out)
         ps.flush()
         ps.close()
@@ -106,14 +125,14 @@ class LocalFtpHandler {
     fun writeLocalData(input: DataInputStream, output: DataOutputStream) {
         val data = ByteArray(1024)
         var len: Int
-        while (input.read(data).also { len = it } != 0) {
+        while (input.read(data).also { len = it } != -1) {
             output.write(data, 0, len)
         }
         // input.close()
     }
 
     @Throws(IOException::class)
-    fun readFromStream(input: InputStream): String {
+    fun readFromStream(input: DataInputStream): String {
         val data = ByteArray(1024)
         var len = 0
         val buffer = StringBuffer()

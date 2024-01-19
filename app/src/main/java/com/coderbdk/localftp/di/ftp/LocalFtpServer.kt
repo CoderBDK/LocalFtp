@@ -33,6 +33,7 @@ class LocalFtpServer(
 
     fun stop() {
         isServerRunning = false
+        server.stopServer()
     }
 
     interface ServerListener {
@@ -46,7 +47,7 @@ class LocalFtpServer(
     }
 
     private inner class ServerThread : Thread() {
-        private lateinit var serverSocket: ServerSocket
+        private var serverSocket: ServerSocket? = null
         private val ftpHandler: LocalFtpHandler = LocalFtpHandler()
         private val requestHandler: RequestHandler = RequestHandler(ftpHandler)
         override fun run() {
@@ -57,9 +58,8 @@ class LocalFtpServer(
         private fun createServer() {
             try {
                 serverSocket = ServerSocket(port, -1, getIpAddress())
-                val isSocketAccepted = false
                 while (isServerRunning) {
-                    val socket = serverSocket.accept()
+                    val socket = serverSocket?.accept()
 
                     if (socket != null && socket.isConnected) {
                         //val header = ftpHandler.readHeader(socket.getInputStream())
@@ -71,7 +71,7 @@ class LocalFtpServer(
                 e.message?.let { mListener?.onError(it) }
                 isServerRunning = false
                 Log.i(javaClass.simpleName, "${e.message}")
-                serverSocket.close()
+                serverSocket?.close()
                 createServer()
 
             }
@@ -84,6 +84,11 @@ class LocalFtpServer(
             output: OutputStream
         ) {
             // requestHandler.handleRequest(socket, header, input, output)
+        }
+
+        fun stopServer() {
+            serverSocket?.close()
+            serverSocket = null
         }
     }
 

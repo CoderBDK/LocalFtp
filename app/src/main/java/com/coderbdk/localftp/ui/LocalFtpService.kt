@@ -1,4 +1,4 @@
-package com.coderbdk.localftp.ui.theme
+package com.coderbdk.localftp.ui
 
 import android.Manifest
 import android.app.Notification
@@ -11,7 +11,6 @@ import android.graphics.BitmapFactory
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
-import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
